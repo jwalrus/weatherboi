@@ -6,145 +6,13 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as LC
+import           Data.List (stripPrefix)
 import qualified Data.Text as T
+import           Data.Text.Encoding (encodeUtf8)
 import           GHC.Generics
 import           Network.HTTP.Simple
 import           Network.HTTP.Types.Status
-import           Lib
-
-type URL = String
-
-data Geometry  = Geometry {
-      geometryJsonType :: String
-    , coordinates :: (Double, Double)
-    } deriving (Show)
-
-instance FromJSON Geometry where
-    parseJSON (Object v) =
-        Geometry <$> v .: "type"
-                 <*> v .: "coordinates"
-
-data Distance = Distance {
-      distanceValue :: Double
-    , distanceUnitCode :: String
-    } deriving (Show)
-
-instance FromJSON Distance where
-    parseJSON (Object v) =
-        Distance <$> v .: "value"
-                 <*> v .: "unitCode"
-
-data Bearing = Bearing {
-      bearingValue :: Int
-    , bearingUnitCode :: String
-    } deriving (Show)
-
-instance FromJSON Bearing where
-    parseJSON (Object v) =
-        Bearing <$> v .: "value"
-                <*> v .: "unitCode"
-
-data Location = Location {
-      city :: String
-    , state :: String
-    , distance :: Distance
-    , bearing :: Bearing
-    } deriving (Show, Generic)
-
-instance FromJSON Location
-
---data Location = Location {
---      locationJsonType :: String
---    , locationGeometry :: String
---    , locationProperties :: LocationProperties
---    } deriving (Show)
-
---instance FromJSON Location where
---    parseJSON (Object v) =
---        Location <$> v .: "type"
---                 <*> v .: "geometry"
---                 <*> v .: "properties"
-
---data WeatherProperties = WeatherProperties {
---      atId :: URL
---    , atType :: String
---    , cwa :: String
---    , forecastOffice :: URL
---    , gridX :: Int
---    , gridY :: Int
---    , forecast :: URL
---    , forecastHourly :: URL
---    , forecastGridData :: URL
---    , observationStations :: URL
---    , relativeLocation :: Location
---    , forecastZone :: URL
---    , county :: URL
---    , fireWeatherZone :: URL
---    , timeZone :: String
---    , radarStation :: String
---    } deriving (Show)
-
---instance FromJSON WeatherProperties where
---    parseJSON (Object v) =
---        WeatherProperties  <$> v .: "@id"
- --                          <*> v .: "@type"
---                           <*> v .: "cwa"
---                           <*> v .: "forecastOffice"
---                           <*> v .: "gridX"
---                           <*> v .: "gridY"
---                           <*> v .: "forecast"
---                           <*> v .: "forecastHourly"
---                           <*> v .: "forecastGridData"
---                           <*> v .: "observationStations"
---                           <*> v .: "relativeLocation"
---                           <*> v .: "forecastZone"
---                           <*> v .: "county"
---                           <*> v .: "fireWeatherZone"
---                          <*> v .: "timeZone"
---                           <*> v .: "radarStation"
-
-data WeatherResponse  = WeatherResponse {
-      responseContext :: Object
-    , responseId :: URL
-    , responseJsonType :: String
-    , geometry :: String
-    , cwa :: String
-    , forecastOffice :: URL
-    , gridX :: Int
-    , gridY :: Int
-    , forecast :: URL
-    , forecastHourly :: URL
-    , forecastGridData :: URL
-    , observationStations :: URL
-    , relativeLocation :: Location
-    , forecastZone :: URL
-    , county :: URL
-    , fireWeatherZone :: URL
-    , timeZone :: String
-    , radarStation :: String
-    } deriving (Show)
-
-
-instance FromJSON WeatherResponse where
-    parseJSON (Object v) =
-        WeatherResponse <$> v .: "@context"
-                        <*> v .: "@id"
-                        <*> v .: "@type"
-                        <*> v .: "geometry"
-                        <*> v .: "cwa"
-                        <*> v .: "forecastOffice"
-                        <*> v .: "gridX"
-                        <*> v .: "gridY"
-                        <*> v .: "forecast"
-                        <*> v .: "forecastHourly"
-                        <*> v .: "forecastGridData"
-                        <*> v .: "observationStations"
-                        <*> v .: "relativeLocation"
-                        <*> v .: "forecastZone"
-                        <*> v .: "county"
-                        <*> v .: "fireWeatherZone"
-                        <*> v .: "timeZone"
-                        <*> v .: "radarStation"
+import           Points
 
 
 apiPath :: BC.ByteString
@@ -171,22 +39,38 @@ request = buildRequest weatherHost "GET" apiPath userAgent
 
 printResults :: Either String WeatherResponse -> IO ()
 printResults (Left errorMsg) = print $ "error loading data: " ++ errorMsg
-printResults (Right results) = print results
+printResults (Right results) = do
+    -- print results
+    print $ forecast results
+    let forecastPath = BC.stripPrefix (BC.append "https://" weatherHost) $ (encodeUtf8 . forecast) results
+    case forecastPath of
+        Nothing -> print "failed to find forecast"
+        Just (path) -> do
+            print $ forecastHourly results
+            response <- httpLBS $ buildRequest weatherHost "GET" path userAgent
+            let (Status code message) = getResponseStatus response
+            if code == 200
+                then do
+                    let jsonBody = getResponseBody response
+                    L.writeFile "forecast.json" jsonBody
+                    print "saved forecast data"
+                else do
+                    print "failed forecast request"
+                    print $ "error code: " ++ show code
+                    print $ "error msg: " ++ show message
 
 
 main :: IO ()
 main = do
-    print "Wouldn't you like to know, weather boi"
     response <- httpLBS request
     let (Status code message) = getResponseStatus response
     if code == 200
         then do
             let jsonBody = getResponseBody response
-            L.writeFile "data.json" jsonBody
-            jsonData <- L.readFile "data.json" -- could just use jsonBody, but want to document readFile usage
-            let weatherResponse = eitherDecode jsonData :: Either String WeatherResponse
+            let weatherResponse = eitherDecode jsonBody :: Either String WeatherResponse
             printResults weatherResponse 
             print "saved response to data.json"
+            L.writeFile "data.json" jsonBody
         else do
             print "failed request"
             print $ "error code: " ++ show code
