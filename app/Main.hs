@@ -13,6 +13,7 @@ import           GHC.Generics
 import           Network.HTTP.Simple
 import           Network.HTTP.Types.Status
 import           Points
+import qualified Forecast as F
 
 
 apiPath :: BC.ByteString
@@ -52,6 +53,10 @@ printResults (Right results) = do
             if code == 200
                 then do
                     let jsonBody = getResponseBody response
+                    let forecastResponse = eitherDecode jsonBody :: Either String F.Forecast
+                    case forecastResponse of
+                      Left (err) -> print $ "Failed to decode forecast: " ++ err
+                      Right (f) -> print $ "Forecast: " ++ show f
                     L.writeFile "forecast.json" jsonBody
                     print "saved forecast data"
                 else do

@@ -29,6 +29,7 @@ library
   exposed-modules:
       Lib
     , Points
+    , Forecast
   other-modules:
       Paths_weatherboi
   hs-source-dirs:
