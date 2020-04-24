@@ -5,8 +5,8 @@ import qualified Data.ByteString.Lazy as L
 import           Data.Aeson
 import           Data.List (stripPrefix)
 import qualified Data.Text as T
-import           Data.Text.Encoding (encodeUtf8)
 import           GHC.Generics
+import           Lib
 import           Network.HTTP.Simple
 import           Network.HTTP.Types.Status
 import qualified Points as P
@@ -69,25 +69,10 @@ instance FromJSON Period where
     parseJSON = genericParseJSON defaultOptions
         { omitNothingFields = True }
 
--- todo: these are repeated in multiple places, find good config spot
-weatherHost :: BC.ByteString
-weatherHost = "api.weather.gov"
 
-userAgent :: BC.ByteString
-userAgent = "WeatherBoi/v0.1 (http://github.com/jwalrus/weatherboi; jwalrus@protonmail.com)"
 
-buildRequest :: BC.ByteString -> BC.ByteString -> BC.ByteString 
-             -> BC.ByteString -> Request
-buildRequest host method path ua = setRequestMethod method
-                                    $ setRequestHost host
-                                    $ setRequestHeaders [("User-Agent", ua), ("Accept", "application/ld+json")]
-                                    $ setRequestPath path
-                                    $ setRequestSecure True
-                                    $ setRequestPort 443
-                                    $ defaultRequest
-
-getForecastPath :: P.WeatherResponse -> Maybe BC.ByteString
-getForecastPath weather = BC.stripPrefix (BC.append "https://" weatherHost) $ (encodeUtf8 . P.forecast) weather
+getForecastPath :: P.WeatherResponse -> Maybe T.Text
+getForecastPath weather = T.stripPrefix (T.append "https://" weatherHost) $ P.forecast weather
 
 
 fetchForecast :: P.WeatherResponse -> IO ()
@@ -96,7 +81,7 @@ fetchForecast results = do
     case forecastPath of
         Nothing -> print "failed to find forecast"
         Just (path) -> do
-            response <- httpLBS $ buildRequest weatherHost "GET" path userAgent
+            response <- httpLBS $ buildHttpsRequest "GET" weatherHost path
             let (Status code message) = getResponseStatus response
             if code == 200
                 then do

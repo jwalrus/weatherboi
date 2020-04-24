@@ -1,12 +1,10 @@
 module Points where
 
 import           Data.Aeson
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as L
-import qualified Data.ByteString.Lazy.Char8 as LC
 import qualified Data.Text as T
 import           GHC.Generics
+import           Lib
 import           Network.HTTP.Simple
 import           Network.HTTP.Types.Status
 
@@ -94,9 +92,12 @@ instance FromJSON WeatherResponse where
                         <*> v .: "timeZone"
                         <*> v .: "radarStation"
 
-fetchWeatherPoints :: Request -> IO (Maybe WeatherResponse)
-fetchWeatherPoints request = do
-    response <- httpLBS request
+pointsPath :: T.Text -> T.Text -> T.Text
+pointsPath lat lng = mconcat ["/points/", lat,  ",", lng]
+
+fetchWeatherPoints :: T.Text -> T.Text -> IO (Maybe WeatherResponse)
+fetchWeatherPoints lat lng = do
+    response <- httpLBS $ buildHttpsRequest "GET" weatherHost (pointsPath lat lng)
     let (Status code message) = getResponseStatus response
     if code == 200
         then do

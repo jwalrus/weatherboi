@@ -1,23 +1,20 @@
 module GeoNamesLatLong where
 
 import           Data.Aeson
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as L
-import qualified Data.ByteString.Lazy.Char8 as LC
 import           Data.List (stripPrefix)
 import qualified Data.Text as T
-import           Data.Text.Encoding (encodeUtf8)
 import           GHC.Generics
+import           Lib
 import           Network.HTTP.Simple
 import           Network.HTTP.Types.Status
 
 
-geoNamesHost :: BC.ByteString
+geoNamesHost :: T.Text
 geoNamesHost = "api.geonames.org"
 
-latLongApi :: BC.ByteString
-latLongApi = "/geoCodeAddressJSON?q=US+Glen+Elder+State+Park+KS&username=weatherboi"
+latLongApi :: T.Text -> T.Text
+latLongApi search = mconcat ["/geoCodeAddressJSON?q=", search, "&username=weatherboi"]
 
 data Address = Address { address :: AddressDetails } deriving (Show, Generic)
 instance FromJSON Address
@@ -48,16 +45,10 @@ data LatLong = LatLong {
     , longitude :: T.Text
     } deriving (Show, Eq)
 
-latLongRequest :: Request
-latLongRequest = setRequestMethod "GET" $ setRequestHost geoNamesHost
-                                        $ setRequestPath latLongApi 
-                                        $ defaultRequest
 
-
-
-fetchLatLong :: Request -> IO (Maybe LatLong)
-fetchLatLong request = do
-    response <- httpLBS request
+fetchLatLong :: T.Text -> IO (Maybe LatLong)
+fetchLatLong search = do
+    response <- httpLBS $ buildHttpRequest "GET" geoNamesHost (latLongApi search)
     let (Status code message) = getResponseStatus response
     if code == 200
         then do
