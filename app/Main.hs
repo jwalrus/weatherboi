@@ -12,7 +12,7 @@ import           Data.Text.Encoding (encodeUtf8)
 import           GHC.Generics
 import           Network.HTTP.Simple
 import           Network.HTTP.Types.Status
-import           Points
+import           Points as P
 import qualified Forecast as F
 import qualified GeoNamesLatLong as LL
 
@@ -39,49 +39,21 @@ buildRequest host method path ua = setRequestMethod method
 request :: Request
 request = buildRequest weatherHost "GET" apiPath userAgent
 
-printResults :: Either String WeatherResponse -> IO ()
-printResults (Left errorMsg) = print $ "error loading data: " ++ errorMsg
-printResults (Right results) = do
-    -- print results
-    print $ forecast results
-    let forecastPath = BC.stripPrefix (BC.append "https://" weatherHost) $ (encodeUtf8 . forecast) results
-    case forecastPath of
-        Nothing -> print "failed to find forecast"
-        Just (path) -> do
-            print $ forecastHourly results
-            response <- httpLBS $ buildRequest weatherHost "GET" path userAgent
-            let (Status code message) = getResponseStatus response
-            if code == 200
-                then do
-                    let jsonBody = getResponseBody response
-                    let forecastResponse = eitherDecode jsonBody :: Either String F.Forecast
-                    case forecastResponse of
-                      Left (err) -> print $ "Failed to decode forecast: " ++ err
-                      Right (f) -> print $ "Forecast: " ++ show f
-                    L.writeFile "forecast.json" jsonBody
-                    print "saved forecast data"
-                else do
-                    print "failed forecast request"
-                    print $ "error code: " ++ show code
-                    print $ "error msg: " ++ show message
-
 
 main :: IO ()
 main = do
-    response <- httpLBS request
-    let (Status code message) = getResponseStatus response
-    if code == 200
-        then do
-            let jsonBody = getResponseBody response
-            let weatherResponse = eitherDecode jsonBody :: Either String WeatherResponse
-            printResults weatherResponse 
-            print "saved response to data.json"
-            L.writeFile "data.json" jsonBody
-        else do
-            print "failed request"
-            print $ "error code: " ++ show code
-            print $ "error message: " ++ show message
-    r2 <- LL.fetchLatLong LL.latLongRequest
-    print r2     
-
+    -- todo: get address, state, zip from user and use to construct lat/lng request
+    -- todo: need better way to construct requests
+    -- todo: need to pass lat lng into next request rather than hard-coding
+    -- todo: need to move buildRequest and other stuff into Lib
+    latLng <- LL.fetchLatLong LL.latLongRequest
+    case latLng of
+        Nothing -> print "Failed to get latitude / longitude for request"
+        Just (LL.LatLong lat lng) -> do
+            print $ "latitude = " ++ show lat ++ " / longitude = " ++ show lng
+            weatherPoints <- P.fetchWeatherPoints request
+            case weatherPoints of
+                Nothing -> print "Failed to get points data from national weather service"
+                Just (weatherResponse) -> do
+                    F.fetchForecast weatherResponse
 

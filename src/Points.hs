@@ -7,6 +7,8 @@ import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as LC
 import qualified Data.Text as T
 import           GHC.Generics
+import           Network.HTTP.Simple
+import           Network.HTTP.Types.Status
 
 type URL = T.Text 
 
@@ -92,4 +94,25 @@ instance FromJSON WeatherResponse where
                         <*> v .: "timeZone"
                         <*> v .: "radarStation"
 
-
+fetchWeatherPoints :: Request -> IO (Maybe WeatherResponse)
+fetchWeatherPoints request = do
+    response <- httpLBS request
+    let (Status code message) = getResponseStatus response
+    if code == 200
+        then do
+            let jsonBody = getResponseBody response
+            let weatherResponse = eitherDecode jsonBody :: Either String WeatherResponse
+            print "saved response to data.json"
+            L.writeFile "data.json" jsonBody
+            case weatherResponse of
+                Left (err) -> do 
+                    print $ "failed to parse weather points response: " ++ err
+                    return Nothing
+                Right (wr) -> do
+                    return $ Just wr
+        else do
+            print "failed request"
+            print $ "error code: " ++ show code
+            print $ "error message: " ++ show message
+            return Nothing
+ 

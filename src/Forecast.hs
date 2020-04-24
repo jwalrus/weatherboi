@@ -1,8 +1,16 @@
 module Forecast where
 
+import qualified Data.ByteString.Char8 as BC
+import qualified Data.ByteString.Lazy as L
 import           Data.Aeson
+import           Data.List (stripPrefix)
 import qualified Data.Text as T
+import           Data.Text.Encoding (encodeUtf8)
 import           GHC.Generics
+import           Network.HTTP.Simple
+import           Network.HTTP.Types.Status
+import qualified Points as P
+
 
 type URL = T.Text 
 type Timestamp = T.Text -- todo: find time package
@@ -60,3 +68,48 @@ data Period = Period {
 instance FromJSON Period where
     parseJSON = genericParseJSON defaultOptions
         { omitNothingFields = True }
+
+-- todo: these are repeated in multiple places, find good config spot
+weatherHost :: BC.ByteString
+weatherHost = "api.weather.gov"
+
+userAgent :: BC.ByteString
+userAgent = "WeatherBoi/v0.1 (http://github.com/jwalrus/weatherboi; jwalrus@protonmail.com)"
+
+buildRequest :: BC.ByteString -> BC.ByteString -> BC.ByteString 
+             -> BC.ByteString -> Request
+buildRequest host method path ua = setRequestMethod method
+                                    $ setRequestHost host
+                                    $ setRequestHeaders [("User-Agent", ua), ("Accept", "application/ld+json")]
+                                    $ setRequestPath path
+                                    $ setRequestSecure True
+                                    $ setRequestPort 443
+                                    $ defaultRequest
+
+getForecastPath :: P.WeatherResponse -> Maybe BC.ByteString
+getForecastPath weather = BC.stripPrefix (BC.append "https://" weatherHost) $ (encodeUtf8 . P.forecast) weather
+
+
+fetchForecast :: P.WeatherResponse -> IO ()
+fetchForecast results = do
+    let forecastPath = getForecastPath results
+    case forecastPath of
+        Nothing -> print "failed to find forecast"
+        Just (path) -> do
+            response <- httpLBS $ buildRequest weatherHost "GET" path userAgent
+            let (Status code message) = getResponseStatus response
+            if code == 200
+                then do
+                    let jsonBody = getResponseBody response
+                    let forecastResponse = eitherDecode jsonBody :: Either String Forecast
+                    case forecastResponse of
+                      Left (err) -> print $ "Failed to decode forecast: " ++ err
+                      Right (f) -> print $ "Forecast: " ++ show f
+                    L.writeFile "forecast.json" jsonBody
+                    print "saved forecast data"
+                else do
+                    print "failed forecast request"
+                    print $ "error code: " ++ show code
+                    print $ "error msg: " ++ show message
+
+
