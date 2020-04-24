@@ -14,6 +14,7 @@ import           Network.HTTP.Simple
 import           Network.HTTP.Types.Status
 import           Points
 import qualified Forecast as F
+import qualified GeoNamesLatLong as LL
 
 
 apiPath :: BC.ByteString
@@ -80,4 +81,7 @@ main = do
             print "failed request"
             print $ "error code: " ++ show code
             print $ "error message: " ++ show message
+    r2 <- LL.fetchLatLong LL.latLongRequest
+    print r2     
+
 
